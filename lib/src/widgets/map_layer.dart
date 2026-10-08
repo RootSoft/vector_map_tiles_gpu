@@ -101,6 +101,8 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
               "pre-render",
               _preRender(),
               jobArguments,
+              // A tile removed meanwhile (panned away) is not worth the work.
+              cancelled: () => !tile.isLoaded,
               deduplicationKey:
                   "pre-render:${widget.mapProperties.theme.id}-${widget.mapProperties.theme.version}-$zoom-${tile.tile.key()}",
             ),
@@ -228,7 +230,8 @@ class MapTilesPainter extends CustomPainter {
   final TilesRenderer tilesRenderer;
   final double rotation;
 
-  MapTilesPainter(this.properties, this.tilesRenderer, this.rotation);
+  MapTilesPainter(this.properties, this.tilesRenderer, this.rotation)
+    : super(repaint: tilesRenderer.repaint);
 
   @override
   void paint(Canvas canvas, Size size) {

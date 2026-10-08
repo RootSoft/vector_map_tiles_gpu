@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:executor_lib/executor_lib.dart';
 
 import '../../vector_map_tiles.dart';
@@ -9,6 +12,7 @@ import 'tile_data_model.dart';
 class MapTiles extends SafeChangeNotifier {
   final _tiles = <TileIdentity, TileDataModel>{};
   final _jobs = <TileIdentity, _TileJob>{};
+  final _retries = <TileIdentity, Timer>{};
   List<TileIdentity> _latestTileIds = [];
 
   List<TileDataModel> get tileModels =>
@@ -86,8 +90,8 @@ class MapTiles extends SafeChangeNotifier {
         .toList();
   }
 
-  void _startLoading(TileDataModel model) {
-    final job = _TileJob(model);
+  void _startLoading(TileDataModel model, {int attempt = 0}) {
+    final job = _TileJob(model, attempt);
     _jobs[model.tile] = job;
     _start(job);
   }
@@ -98,6 +102,10 @@ class MapTiles extends SafeChangeNotifier {
       super.dispose();
       _remove(_tiles.values.toList());
       _jobs.clear();
+      for (final retry in _retries.values) {
+        retry.cancel();
+      }
+      _retries.clear();
       _tiles.clear();
     }
   }
@@ -109,14 +117,54 @@ class MapTiles extends SafeChangeNotifier {
     try {
       await tileLoader.load(job.model, () => job.cancelled);
     } on CancellationException catch (_) {
-      _tiles.remove(job.model.tile);
+      // By identity: panned away and back, the tile has a new model and job
+      // by now, which this late cancellation must not take with it.
+      if (identical(_tiles[job.model.tile], job.model)) {
+        _tiles.remove(job.model.tile);
+      }
       job.model.dispose();
+    } catch (error) {
+      _scheduleRetry(job, error);
     } finally {
-      _jobs.remove(job.model.tile);
+      if (identical(_jobs[job.model.tile], job)) {
+        _jobs.remove(job.model.tile);
+      }
       _removeObsoleteTiles();
       notifyListeners();
     }
   }
+
+  /// Loads a tile that failed again after a backoff (1 s doubling to 30 s), for
+  /// as long as it stays in view, unless the provider says asking again
+  /// cannot help.
+  ///
+  /// A provider failure (a network error, the connection briefly read as
+  /// offline) otherwise left the tile unloaded for as long as it was in view:
+  /// nothing asked for it again until it was panned away and back. The model
+  /// stays in place meanwhile, so the tiles of other zooms covering it are
+  /// retained and the area is not left blank.
+  void _scheduleRetry(_TileJob job, Object error) {
+    final model = job.model;
+    if (job.cancelled || isDisposed) return;
+    if (error is ProviderException) {
+      // A provider that says retry is asked for as long as the tile is in
+      // view: a connection back after minutes must still fill it in.
+      if (error.retryable == Retryable.none) return;
+    } else if (job.attempt >= _maxOtherRetries) {
+      // Anything else (a tile that does not decode) is unlikely to change.
+      return;
+    }
+    final delay = Duration(seconds: min(30, 1 << min(job.attempt, 5)));
+    _retries.remove(model.tile)?.cancel();
+    _retries[model.tile] = Timer(delay, () {
+      _retries.remove(model.tile);
+      if (isDisposed || !identical(_tiles[model.tile], model)) return;
+      if (model.isLoaded || _jobs.containsKey(model.tile)) return;
+      _startLoading(model, attempt: job.attempt + 1);
+    });
+  }
+
+  static const _maxOtherRetries = 3;
 
   bool _removeObsoleteTiles() {
     final toRemove = _computeTilesToRemove();
@@ -127,6 +175,7 @@ class MapTiles extends SafeChangeNotifier {
   void _remove(List<TileDataModel> toRemove) {
     for (var model in toRemove) {
       _jobs.remove(model.tile)?.cancel();
+      _retries.remove(model.tile)?.cancel();
       _tiles.remove(model.tile);
       model.dispose();
     }
@@ -136,7 +185,8 @@ class MapTiles extends SafeChangeNotifier {
 class _TileJob {
   bool cancelled = false;
   final TileDataModel model;
-  _TileJob(this.model);
+  final int attempt;
+  _TileJob(this.model, this.attempt);
 
   void cancel() {
     cancelled = true;

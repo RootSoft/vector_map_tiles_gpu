@@ -61,9 +61,25 @@ abstract class AbstractMapLayerState<T extends AbstractMapLayer>
             tile.isDisplayReady = tile.isLoaded;
           });
         }
-      });
+      }, onError: (Object _) => _preRenderFailed(tile));
     }
   }
+
+  /// A tile whose pre-render failed is pre-rendered again on a later build, a
+  /// few times, rather than left blank for as long as it is in view. A tile
+  /// removed meanwhile (its job cancelled) is simply dropped.
+  void _preRenderFailed(TileDataModel tile) {
+    if (!tile.isLoaded || ++tile.preRenderFailures > _maxPreRenderAttempts) {
+      return;
+    }
+    Future.delayed(Duration(milliseconds: 500 * tile.preRenderFailures), () {
+      if (!mounted || !tile.isLoaded) return;
+      tile.preRenderStarted = false;
+      _updateTiles();
+    });
+  }
+
+  static const _maxPreRenderAttempts = 3;
 
   void onTilesChanged() {
     _startAnimationPeriod();

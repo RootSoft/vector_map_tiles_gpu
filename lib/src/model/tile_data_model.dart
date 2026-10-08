@@ -11,6 +11,7 @@ class TileDataModel {
   bool isLoaded = false;
   bool isDisplayReady = false;
   bool preRenderStarted = false;
+  int preRenderFailures = 0;
   Tileset? tileset;
   RasterTileset? rasterTileset;
 
