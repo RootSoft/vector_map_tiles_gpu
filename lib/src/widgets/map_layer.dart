@@ -32,7 +32,7 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
   void initState() {
     super.initState();
     tilesRenderer = TilesRenderer(widget.mapProperties.theme);
-    TilesRenderer.initialize.then(_initialized);
+    TilesRenderer.initialize.then(_initialized, onError: _initializationFailed);
     _loadSprites();
   }
 
@@ -190,6 +190,15 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
     final setA = a.toSet();
     final setB = b.toSet();
     return setA.length == setB.length && setA.containsAll(setB);
+  }
+
+  /// Flutter GPU is unavailable (no Impeller, or a test run): the layer stays
+  /// empty rather than throwing while the map is built.
+  void _initializationFailed(Object error, StackTrace stackTrace) {
+    debugPrint(
+      'vector_map_tiles: GPU rendering is unavailable, so the vector '
+      'layer is not drawn: $error',
+    );
   }
 
   FutureOr _initialized(void value) {
