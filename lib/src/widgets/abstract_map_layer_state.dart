@@ -4,7 +4,7 @@ import 'package:executor_lib/executor_lib.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
-import '../executors/executors_std.dart';
+import '../executors/shared_executor.dart';
 import '../loader/theme_repo.dart';
 import '../loader/tile_loader.dart';
 import '../model/map_properties.dart';
@@ -36,7 +36,7 @@ abstract class AbstractMapLayerState<T extends AbstractMapLayer>
   @override
   void dispose() {
     _animationTicker?.dispose();
-    executor.dispose();
+    releaseSharedExecutor();
     _mapAdapter?.dispose();
     super.dispose();
   }
@@ -109,7 +109,9 @@ abstract class AbstractMapLayerState<T extends AbstractMapLayer>
   @override
   void initState() {
     super.initState();
-    executor = newConcurrentExecutor(
+    // One pool of worker isolates for every map layer on screen, rather than
+    // one per layer (merged from 9.0.0-beta.10).
+    executor = acquireSharedExecutor(
       concurrency: widget.mapProperties.concurrency,
     );
     tileLoader =

@@ -1,3 +1,15 @@
+## 10.0.0-beta.3 (By Locals fork)
+
+* build on Flutter 3.47 (the first stable with the Flutter GPU support the
+  renderer needs), against vector_tile_renderer ported to flutter_scene 0.24.1
+* adapt to vector_tile_renderer 7.0.0-beta.2: `TileUiModel` takes a
+  `TileSource`, and pre-rendering returns the text layers and each source
+  tile's early pass
+* merge 9.0.0-beta.13: the shared executor. The 9.0.0-beta.12/13 memory and
+  blank-tile fixes were in the CPU raster pipeline this version replaces, and
+  `VectorTileController.clearMemoryCaches` cleared that pipeline's caches, so
+  neither is carried over
+
 ## 10.0.0-beta.2
 
 * Adds full GPU rendering support for `flutter_map`, delivering smoother animations, higher frame rates, and improved efficiency.
