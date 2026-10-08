@@ -113,18 +113,31 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
     });
   }
 
+  List<Map<String, Uint8List>> Function(
+    (String, double, Tileset, String, int) args,
+  )
+  _preRender() => _preRenderJob(
+    tilesRenderer.getPreRenderer(),
+    ThemeLayerType.values.where(tilesRenderer.isPreRenderLayer).toSet(),
+  );
+
   /// The pre-render job: the text layers through the renderer's pre-renderer,
   /// then each source tile's early pass (polygons, lines and the rest), the
   /// two halves `TileUiModel.renderData` takes since vector_tile_renderer
   /// 7.0.0-beta.2.
-  List<Map<String, Uint8List>> Function(
+  ///
+  /// Static on purpose: the job is sent to a worker isolate, and a closure made
+  /// in an instance method shares its captured context with every other
+  /// closure there. One that reads a field captures `this`, the whole widget
+  /// state and render tree, which cannot be sent ("object is unsendable").
+  static List<Map<String, Uint8List>> Function(
     (String, double, Tileset, String, int) args,
   )
-  _preRender() {
-    final preRenderer = tilesRenderer.getPreRenderer();
-    final preRenderTypes = ThemeLayerType.values
-        .where((it) => tilesRenderer.isPreRenderLayer(it))
-        .toSet();
+  _preRenderJob(
+    Map<String, Uint8List> Function(Theme, double, Tileset, String, int)
+    preRenderer,
+    Set<ThemeLayerType> preRenderTypes,
+  ) {
     return ((String, double, Tileset, String, int) args) {
       final (themeId, zoom, tileset, tileID, zoomOffset) = args;
       final theme = ThemeRepo.themeById[themeId]!;
