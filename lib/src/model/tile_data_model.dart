@@ -13,7 +13,9 @@ class TileDataModel {
   bool preRenderStarted = false;
   Tileset? tileset;
   RasterTileset? rasterTileset;
-  Uint8List? renderData;
+  /// The tile's pre-rendered GPU data, one map of layer id to packed render
+  /// data per pre-render pass (text, then each source tile's early pass).
+  List<Map<String, Uint8List>>? renderData;
 
   TileDataModel(this.tilePosition) : tile = tilePosition.tile;
 

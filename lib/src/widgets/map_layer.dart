@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:executor_lib/executor_lib.dart';
 import 'package:flutter/widgets.dart';
@@ -53,9 +53,16 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
     return super.preRender(tile).then((_) async {
       final tileset = tile.tileset ?? Tileset({});
       final tileID = tile.tile.key();
-      final jobArguments =
-          (widget.mapProperties.theme.id, zoom, tileset, tileID);
+      final jobArguments = (
+        widget.mapProperties.theme.id,
+        zoom,
+        tileset,
+        tileID,
+        widget.mapProperties.tileOffset.zoomOffset,
+      );
 
+      // Text atlases are built here, on the UI isolate, before the job that
+      // lays the text out against them.
       await tilesRenderer.preRenderUi(zoom, tileset, tileID);
       await executor
           .submit(Job(
@@ -67,19 +74,35 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
       ))
           .then((renderData) {
         try {
-          tile.renderData ??= renderData.materialize().asUint8List();
+          tile.renderData ??= renderData;
         } catch (_) {}
       });
     });
   }
 
-  TransferableTypedData Function((String, double, Tileset, String) args)
-      _preRender() {
+  /// The pre-render job: the text layers through the renderer's pre-renderer,
+  /// then each source tile's early pass (polygons, lines and the rest), the
+  /// two halves `TileUiModel.renderData` takes since vector_tile_renderer
+  /// 7.0.0-beta.2.
+  List<Map<String, Uint8List>> Function(
+      (String, double, Tileset, String, int) args) _preRender() {
     final preRenderer = tilesRenderer.getPreRenderer();
-    return ((String, double, Tileset, String) args) {
-      final theme = ThemeRepo.themeById[args.$1]!;
-      return TransferableTypedData.fromList(
-          [preRenderer.call(theme, args.$2, args.$3, args.$4)]);
+    final preRenderTypes = ThemeLayerType.values
+        .where((it) => tilesRenderer.isPreRenderLayer(it))
+        .toSet();
+    return ((String, double, Tileset, String, int) args) {
+      final (themeId, zoom, tileset, tileID, zoomOffset) = args;
+      final theme = ThemeRepo.themeById[themeId]!;
+      final text = preRenderer.call(theme.copyWith(types: preRenderTypes),
+          zoom, tileset, tileID, zoomOffset);
+      final early = [
+        for (final MapEntry(key: source, value: sourceTile)
+            in tileset.tiles.entries)
+          (sourceTile..earlyPreRender(theme, zoom, zoomOffset, source))
+              .materialize()
+              .prerenderData,
+      ];
+      return [text, ...early];
     };
   }
 
@@ -149,8 +172,10 @@ extension _TileDataModelUiExtension on TileDataModel {
   TileUiModel toUiModel() => TileUiModel(
         tileId: tile.toTileId(),
         position: tilePosition.position,
-        tileset: tileset ?? Tileset({}),
-        rasterTileset: rasterTileset ?? const RasterTileset(tiles: {}),
+        tileSource: TileSource(
+          tileset: tileset ?? Tileset({}),
+          rasterTileset: rasterTileset ?? const RasterTileset(tiles: {}),
+        ),
         renderData: renderData,
       );
 }

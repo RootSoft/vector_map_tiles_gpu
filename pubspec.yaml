@@ -4,8 +4,9 @@ version: 10.0.0-beta.2
 homepage: https://github.com/greensopinion/flutter-vector-map-tiles
 
 environment:
-  sdk: ">=3.6.0-0 <4.0.0"
-  flutter: '>=3.37.0-0'
+  sdk: ^3.10.0
+  # Flutter GPU as vector_tile_renderer (flutter_scene 0.24) needs it first ships on stable in 3.47.0.
+  flutter: ">=3.47.0"
 
 dependencies:
   executor_lib: ^1.1.2
@@ -18,8 +19,8 @@ dependencies:
   stash: ^5.2.0
   stash_file: ^5.2.0
   stash_memory: ^5.2.0
-  vector_tile_renderer: ^7.0.0-beta.1
-    #path: ../vector_tile_renderer
+  vector_tile_renderer:
+    path: ../vector_tile_renderer
 
 dev_dependencies:
   test: ^1.24.0
