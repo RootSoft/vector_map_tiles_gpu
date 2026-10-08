@@ -9,7 +9,7 @@ import 'abstract_map_layer_state.dart';
 
 class TilePositioningDebugLayer extends AbstractMapLayer {
   const TilePositioningDebugLayer({super.key, required super.mapProperties})
-      : super(tileLoaderFactory: _noOpTileLoader);
+    : super(tileLoaderFactory: _noOpTileLoader);
 
   @override
   State<StatefulWidget> createState() => TilePositioningDebugLayerState();
@@ -22,8 +22,9 @@ class TilePositioningDebugLayerState
   @override
   Widget build(BuildContext context) {
     updateTiles(context);
-    final tilePositions =
-        mapTiles.tileModels.map((m) => m.tilePosition).toList();
+    final tilePositions = mapTiles.tileModels
+        .map((m) => m.tilePosition)
+        .toList();
     if (tilePositions.isEmpty) {
       return const Center(child: Text('No tiles to display'));
     }
@@ -55,5 +56,7 @@ class TilePositioningDebugLayerState
 }
 
 TileLoader _noOpTileLoader(
-        MapProperties properties, Executor executor, dynamic unused) =>
-    const NoOpTileLoader();
+  MapProperties properties,
+  Executor executor,
+  dynamic unused,
+) => const NoOpTileLoader();

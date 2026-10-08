@@ -18,13 +18,14 @@ class Style {
   final LatLng? center;
   final double? zoom;
 
-  Style(
-      {this.name,
-      required this.theme,
-      required this.providers,
-      this.sprites,
-      this.center,
-      this.zoom});
+  Style({
+    this.name,
+    required this.theme,
+    required this.providers,
+    this.sprites,
+    this.center,
+    this.zoom,
+  });
 }
 
 class SpriteStyle {
@@ -40,9 +41,12 @@ class StyleReader {
   final Logger logger;
   final Map<String, String>? httpHeaders;
 
-  StyleReader(
-      {required this.uri, this.apiKey, Logger? logger, this.httpHeaders})
-      : logger = logger ?? const Logger.noop();
+  StyleReader({
+    required this.uri,
+    this.apiKey,
+    Logger? logger,
+    this.httpHeaders,
+  }) : logger = logger ?? const Logger.noop();
 
   Future<Style> read() async {
     final uriMapper = StyleUriMapper(key: apiKey);
@@ -62,8 +66,10 @@ class StyleReader {
     final center = style['center'];
     LatLng? centerPoint;
     if (center is List && center.length == 2) {
-      centerPoint =
-          LatLng((center[1] as num).toDouble(), (center[0] as num).toDouble());
+      centerPoint = LatLng(
+        (center[1] as num).toDouble(),
+        (center[0] as num).toDouble(),
+      );
     }
     double? zoom = (style['zoom'] as num?)?.toDouble();
     if (zoom != null && zoom < 2) {
@@ -84,22 +90,25 @@ class StyleReader {
           continue;
         }
         sprites = SpriteStyle(
-            atlasProvider: () => _loadBinary(spriteUri.image, httpHeaders),
-            index: SpriteIndexReader(logger: logger).read(spritesJson));
+          atlasProvider: () => _loadBinary(spriteUri.image, httpHeaders),
+          index: SpriteIndexReader(logger: logger).read(spritesJson),
+        );
         break;
       }
     }
     return Style(
-        theme: ThemeReader(logger: logger).read(style),
-        providers: TileProviders(providerByName),
-        sprites: sprites,
-        name: name,
-        center: centerPoint,
-        zoom: zoom);
+      theme: ThemeReader(logger: logger).read(style),
+      providers: TileProviders(providerByName),
+      sprites: sprites,
+      name: name,
+      center: centerPoint,
+      zoom: zoom,
+    );
   }
 
   Future<Map<String, VectorTileProvider>> _readProviderByName(
-      Map sources) async {
+    Map sources,
+  ) async {
     final providers = <String, VectorTileProvider>{};
     final sourceEntries = sources.entries.toList();
     for (final entry in sourceEntries) {
@@ -112,8 +121,10 @@ class StyleReader {
       var entryUrl = entry.value['url'] as String?;
       if (entryUrl != null) {
         final sourceUrl = StyleUriMapper(key: apiKey).mapSource(uri, entryUrl);
-        source =
-            await compute(jsonDecode, await _httpGet(sourceUrl, httpHeaders));
+        source = await compute(
+          jsonDecode,
+          await _httpGet(sourceUrl, httpHeaders),
+        );
         if (source is! Map) {
           throw _invalidStyle(sourceUrl);
         }
@@ -127,11 +138,12 @@ class StyleReader {
         final tileUri = entryTiles[0] as String;
         final tileUrl = StyleUriMapper(key: apiKey).mapTiles(tileUri);
         providers[entry.key] = NetworkVectorTileProvider(
-            type: type,
-            urlTemplate: tileUrl,
-            maximumZoom: maxzoom,
-            minimumZoom: minzoom,
-            httpHeaders: httpHeaders);
+          type: type,
+          urlTemplate: tileUrl,
+          maximumZoom: maxzoom,
+          minimumZoom: minzoom,
+          httpHeaders: httpHeaders,
+        );
       }
     }
     if (providers.isEmpty) {
@@ -154,7 +166,9 @@ Future<String> _httpGet(String url, Map<String, String>? httpHeaders) async {
 }
 
 Future<Uint8List> _loadBinary(
-    String url, Map<String, String>? httpHeaders) async {
+  String url,
+  Map<String, String>? httpHeaders,
+) async {
   final response = await get(Uri.parse(url), headers: httpHeaders);
   if (response.statusCode == 200) {
     return response.bodyBytes;

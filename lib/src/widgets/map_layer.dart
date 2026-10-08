@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:executor_lib/executor_lib.dart';
 import 'package:flutter/widgets.dart';
@@ -14,15 +15,17 @@ import 'abstract_map_layer_state.dart';
 
 class MapLayer extends AbstractMapLayer {
   const MapLayer({super.key, required super.mapProperties})
-      : super(tileLoaderFactory: createCachingTileLoader);
+    : super(tileLoaderFactory: createCachingTileLoader);
 
   @override
   State<StatefulWidget> createState() => MapLayerState();
 }
 
 class MapLayerState extends AbstractMapLayerState<MapLayer> {
-  late final TilesRenderer tilesRenderer;
+  // Not final: a new theme brings a new renderer (didUpdateWidget).
+  late TilesRenderer tilesRenderer;
   var _ready = false;
+  ui.Image? _spriteAtlas;
   List<String> _previousTileKeys = [];
 
   @override
@@ -30,12 +33,37 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
     super.initState();
     tilesRenderer = TilesRenderer(widget.mapProperties.theme);
     TilesRenderer.initialize.then(_initialized);
+    _loadSprites();
   }
 
   @override
   void dispose() {
     super.dispose();
     tilesRenderer.dispose();
+    _spriteAtlas?.dispose();
+  }
+
+  /// Decodes the theme's sprite sheet once, for the renderer to draw sprite
+  /// icons from. Without it (no sprites, or a sheet that fails to load) the map
+  /// is drawn without them rather than not at all.
+  Future<void> _loadSprites() async {
+    final sprites = widget.mapProperties.sprites;
+    if (sprites == null) return;
+    try {
+      final codec = await ui.instantiateImageCodec(
+        await sprites.atlasProvider(),
+      );
+      final frame = await codec.getNextFrame();
+      codec.dispose();
+      if (!mounted || widget.mapProperties.sprites != sprites) {
+        frame.image.dispose();
+        return;
+      }
+      setState(() {
+        _spriteAtlas?.dispose();
+        _spriteAtlas = frame.image;
+      });
+    } catch (_) {}
   }
 
   @override
@@ -45,6 +73,9 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
       tilesRenderer.dispose();
       tilesRenderer = TilesRenderer(widget.mapProperties.theme);
       super.resetState();
+    }
+    if (oldWidget.mapProperties.sprites != widget.mapProperties.sprites) {
+      _loadSprites();
     }
   }
 
@@ -65,18 +96,20 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
       // lays the text out against them.
       await tilesRenderer.preRenderUi(zoom, tileset, tileID);
       await executor
-          .submit(Job(
-        "pre-render",
-        _preRender(),
-        jobArguments,
-        deduplicationKey:
-            "pre-render:${widget.mapProperties.theme.id}-${widget.mapProperties.theme.version}-$zoom-${tile.tile.key()}",
-      ))
+          .submit(
+            Job(
+              "pre-render",
+              _preRender(),
+              jobArguments,
+              deduplicationKey:
+                  "pre-render:${widget.mapProperties.theme.id}-${widget.mapProperties.theme.version}-$zoom-${tile.tile.key()}",
+            ),
+          )
           .then((renderData) {
-        try {
-          tile.renderData ??= renderData;
-        } catch (_) {}
-      });
+            try {
+              tile.renderData ??= renderData;
+            } catch (_) {}
+          });
     });
   }
 
@@ -85,7 +118,9 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
   /// two halves `TileUiModel.renderData` takes since vector_tile_renderer
   /// 7.0.0-beta.2.
   List<Map<String, Uint8List>> Function(
-      (String, double, Tileset, String, int) args) _preRender() {
+    (String, double, Tileset, String, int) args,
+  )
+  _preRender() {
     final preRenderer = tilesRenderer.getPreRenderer();
     final preRenderTypes = ThemeLayerType.values
         .where((it) => tilesRenderer.isPreRenderLayer(it))
@@ -93,8 +128,13 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
     return ((String, double, Tileset, String, int) args) {
       final (themeId, zoom, tileset, tileID, zoomOffset) = args;
       final theme = ThemeRepo.themeById[themeId]!;
-      final text = preRenderer.call(theme.copyWith(types: preRenderTypes),
-          zoom, tileset, tileID, zoomOffset);
+      final text = preRenderer.call(
+        theme.copyWith(types: preRenderTypes),
+        zoom,
+        tileset,
+        tileID,
+        zoomOffset,
+      );
       final early = [
         for (final MapEntry(key: source, value: sourceTile)
             in tileset.tiles.entries)
@@ -115,8 +155,14 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
     final tileModels = mapTiles.tileModels
         .where((it) => it.isDisplayReady)
         .toList(growable: false);
-    final uiTiles =
-        tileModels.map((it) => it.toUiModel()).toList(growable: false);
+    final uiTiles = tileModels
+        .map(
+          (it) => it.toUiModel(
+            spriteIndex: widget.mapProperties.sprites?.index,
+            spriteAtlas: _spriteAtlas,
+          ),
+        )
+        .toList(growable: false);
 
     final currentTileKeys = uiTiles.map((it) => it.tileId.key()).toList();
     if (!_tilesEqual(currentTileKeys, _previousTileKeys)) {
@@ -125,7 +171,10 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
     }
 
     tilesRenderer.update(
-        zoom, uiTiles, mapTiles.tileModels.map((it) => it.tile.key()));
+      zoom,
+      uiTiles,
+      mapTiles.tileModels.map((it) => it.tile.key()),
+    );
 
     return CustomPaint(
       key: Key(
@@ -169,12 +218,16 @@ class MapTilesPainter extends CustomPainter {
 }
 
 extension _TileDataModelUiExtension on TileDataModel {
-  TileUiModel toUiModel() => TileUiModel(
+  TileUiModel toUiModel({SpriteIndex? spriteIndex, ui.Image? spriteAtlas}) =>
+      TileUiModel(
         tileId: tile.toTileId(),
         position: tilePosition.position,
         tileSource: TileSource(
           tileset: tileset ?? Tileset({}),
           rasterTileset: rasterTileset ?? const RasterTileset(tiles: {}),
+          // Both or neither: an index without its sheet has nothing to draw.
+          spriteIndex: spriteAtlas == null ? null : spriteIndex,
+          spriteAtlas: spriteAtlas,
         ),
         renderData: renderData,
       );

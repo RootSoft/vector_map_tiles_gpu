@@ -10,11 +10,10 @@ TileLoader createCachingTileLoader(
   MapProperties mapProperties,
   Executor executor,
   ThemeRepo themeRepo,
-) =>
-    DefaultTileLoader(
-      tileSize: 256.0,
-      mapProperties: mapProperties,
-      executor: executor,
-      cache: CacheTiered(properties: mapProperties.cacheProperties),
-      themeRepo: themeRepo,
-    );
+) => DefaultTileLoader(
+  tileSize: 256.0,
+  mapProperties: mapProperties,
+  executor: executor,
+  cache: CacheTiered(properties: mapProperties.cacheProperties),
+  themeRepo: themeRepo,
+);

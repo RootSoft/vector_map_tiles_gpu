@@ -7,7 +7,7 @@ import 'tile_widget.dart';
 
 class MapTilesLayer extends AbstractMapLayer {
   const MapTilesLayer({super.key, required super.mapProperties})
-      : super(tileLoaderFactory: createCachingTileLoader);
+    : super(tileLoaderFactory: createCachingTileLoader);
 
   @override
   State<StatefulWidget> createState() => MapTilesLayerState();
@@ -19,19 +19,19 @@ class MapTilesLayerState extends AbstractMapLayerState<MapTilesLayer> {
   @override
   Widget build(BuildContext context) {
     updateTiles(context);
-    final displayReadyModels =
-        mapTiles.tileModels.where((m) => m.isDisplayReady).toList();
+    final displayReadyModels = mapTiles.tileModels
+        .where((m) => m.isDisplayReady)
+        .toList();
 
-    final currentTileKeys =
-        displayReadyModels.map((it) => it.tile.key()).toList();
+    final currentTileKeys = displayReadyModels
+        .map((it) => it.tile.key())
+        .toList();
     if (!_tilesEqual(currentTileKeys, _previousTileKeys)) {
       _previousTileKeys = currentTileKeys;
       onTilesChanged();
     }
 
-    return Stack(
-      children: displayReadyModels.map(_toTile).toList(),
-    );
+    return Stack(children: displayReadyModels.map(_toTile).toList());
   }
 
   bool _tilesEqual(List<String> a, List<String> b) {

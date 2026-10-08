@@ -5,6 +5,7 @@ import 'package:vector_tile_renderer/vector_tile_renderer.dart';
 
 import 'cache/cache.dart';
 import 'model/map_properties.dart';
+import 'style/style.dart';
 import 'tile_offset.dart';
 import 'tile_providers.dart';
 import 'widgets/map_layer.dart';
@@ -23,6 +24,11 @@ class VectorTileLayer extends StatelessWidget {
 
   /// the tile offset
   final TileOffset tileOffset;
+
+  /// The theme's sprites, for icons drawn from its sprite sheet: the
+  /// [Style.sprites] a [StyleReader] returns. Without them, sprite icons are
+  /// not drawn.
+  final SpriteStyle? sprites;
 
   /// The level of concurrency to use, must be >= 0.
   /// When set to 1 or higher, [isolates](https://dart.dev/guides/language/concurrency)
@@ -60,7 +66,8 @@ class VectorTileLayer extends StatelessWidget {
     super.key,
     required this.tileProviders,
     required this.theme,
-    required this.tileOffset,
+    this.tileOffset = TileOffset.DEFAULT,
+    this.sprites,
     this.concurrency = defaultConcurrency,
     this.fileCacheTtl = defaultCacheTtl,
     this.fileCacheMaximumSizeInBytes = defaultCacheMaxSize,
@@ -72,25 +79,26 @@ class VectorTileLayer extends StatelessWidget {
       SizedBox.expand(child: _buildGpu(context));
 
   Widget _buildGpu(BuildContext context) => MapLayer(
-        key: Key('map_layer_${theme.id}_${theme.version}'),
-        mapProperties: _createMapProperties(),
-      );
+    key: Key('map_layer_${theme.id}_${theme.version}'),
+    mapProperties: _createMapProperties(),
+  );
 
   // ignore: unused_element
   Widget _buildCanvas(BuildContext context) => MapTilesLayer(
-        key: Key('map_tiles_${theme.id}_${theme.version}'),
-        mapProperties: _createMapProperties(),
-      );
+    key: Key('map_tiles_${theme.id}_${theme.version}'),
+    mapProperties: _createMapProperties(),
+  );
 
   MapProperties _createMapProperties() => MapProperties(
-        tileProviders: tileProviders,
-        theme: theme,
-        tileOffset: tileOffset,
-        concurrency: concurrency,
-        cacheProperties: CacheProperties(
-          fileCacheTtl: fileCacheTtl,
-          fileCacheMaximumSizeInBytes: fileCacheMaximumSizeInBytes,
-          cacheFolder: cacheFolder,
-        ),
-      );
+    tileProviders: tileProviders,
+    theme: theme,
+    tileOffset: tileOffset,
+    sprites: sprites,
+    concurrency: concurrency,
+    cacheProperties: CacheProperties(
+      fileCacheTtl: fileCacheTtl,
+      fileCacheMaximumSizeInBytes: fileCacheMaximumSizeInBytes,
+      cacheFolder: cacheFolder,
+    ),
+  );
 }

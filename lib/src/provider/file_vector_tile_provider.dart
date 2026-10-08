@@ -25,13 +25,14 @@ class FileVectorTileProvider extends VectorTileProvider {
   @override
   final TileOffset tileOffset;
 
-  FileVectorTileProvider(
-      {required this.root,
-      required this.extension,
-      required this.type,
-      this.tileOffset = TileOffset.DEFAULT,
-      required this.maximumZoom,
-      required this.minimumZoom});
+  FileVectorTileProvider({
+    required this.root,
+    required this.extension,
+    required this.type,
+    this.tileOffset = TileOffset.DEFAULT,
+    required this.maximumZoom,
+    required this.minimumZoom,
+  });
 
   @override
   Future<Uint8List> provide(TileIdentity tile) async {
@@ -40,7 +41,10 @@ class FileVectorTileProvider extends VectorTileProvider {
       return await file.readAsBytes();
     } catch (e) {
       throw ProviderException(
-          message: "$e", retryable: Retryable.none, statusCode: 404);
+        message: "$e",
+        retryable: Retryable.none,
+        statusCode: 404,
+      );
     }
   }
 }

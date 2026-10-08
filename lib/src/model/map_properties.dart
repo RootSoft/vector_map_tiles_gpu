@@ -10,6 +10,8 @@ class MapProperties {
 
   final TileOffset tileOffset;
 
+  final SpriteStyle? sprites;
+
   final CacheProperties cacheProperties;
 
   final int concurrency;
@@ -18,6 +20,7 @@ class MapProperties {
     required this.tileProviders,
     required this.theme,
     required this.tileOffset,
+    this.sprites,
     required this.concurrency,
     required this.cacheProperties,
   });

@@ -68,8 +68,9 @@ class _TransformInput {
 
 Tile _apply(_TransformInput input) {
   final theme = ThemeRepo.themeById[input.themeId]!;
-  final vectorTile =
-      VectorTileReader().read(input.bytes.materialize().asUint8List());
+  final vectorTile = VectorTileReader().read(
+    input.bytes.materialize().asUint8List(),
+  );
   final tileData = TileFactory(
     theme,
     const Logger.noop(),

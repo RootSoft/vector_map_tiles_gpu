@@ -14,7 +14,7 @@ import 'cache.dart';
 
 class CacheIo extends AbstractStashCache {
   CacheIo({required CacheProperties properties})
-      : super(name: 'io', cacheFactory: () => createStashIoCache(properties));
+    : super(name: 'io', cacheFactory: () => createStashIoCache(properties));
 }
 
 Future<BinaryCache> createStashIoCache(CacheProperties properties) async {

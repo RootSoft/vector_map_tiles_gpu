@@ -45,8 +45,9 @@ class StyleUriMapper {
   }
 
   String _toMapboxStyleApiUri(String uri) {
-    final match =
-        RegExp(r'mapbox://styles/([^/]+)/([^?]+)\??(.+)?').firstMatch(uri);
+    final match = RegExp(
+      r'mapbox://styles/([^/]+)/([^?]+)\??(.+)?',
+    ).firstMatch(uri);
     if (match == null) {
       throw 'Unexpected format: $uri';
     }
@@ -61,7 +62,9 @@ class StyleUriMapper {
   }
 
   String _toMapboxSourceApiUri(
-      String sourceUri, Map<String, String> parameters) {
+    String sourceUri,
+    Map<String, String> parameters,
+  ) {
     final match = RegExp(r'mapbox://(.+)').firstMatch(sourceUri);
     if (match == null) {
       throw 'Unexpected format: $sourceUri';
@@ -71,32 +74,42 @@ class StyleUriMapper {
   }
 
   SpriteUri _toMapboxSpriteUri(
-      String spriteUri, Map<String, String> parameters, String suffix) {
+    String spriteUri,
+    Map<String, String> parameters,
+    String suffix,
+  ) {
     final match = RegExp(r'mapbox://sprites/(.+)').firstMatch(spriteUri);
     if (match == null) {
       throw 'Unexpected format: $spriteUri';
     }
     final sprite = match.group(1);
     return SpriteUri(
-        json:
-            'https://api.mapbox.com/styles/v1/$sprite/sprite$suffix.json?secure&${parameters.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}',
-        image:
-            'https://api.mapbox.com/styles/v1/$sprite/sprite$suffix.png?secure&${parameters.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}');
+      json:
+          'https://api.mapbox.com/styles/v1/$sprite/sprite$suffix.json?secure&${parameters.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}',
+      image:
+          'https://api.mapbox.com/styles/v1/$sprite/sprite$suffix.png?secure&${parameters.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}',
+    );
   }
 
   SpriteUri _toSpriteUri(
-      String spriteUri, Map<String, String> parameters, String suffix) {
+    String spriteUri,
+    Map<String, String> parameters,
+    String suffix,
+  ) {
     return SpriteUri(
-        json:
-            '$spriteUri$suffix.json?secure&${parameters.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}',
-        image:
-            '$spriteUri$suffix.png?secure&${parameters.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}');
+      json:
+          '$spriteUri$suffix.json?secure&${parameters.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}',
+      image:
+          '$spriteUri$suffix.png?secure&${parameters.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}',
+    );
   }
 }
 
 String _replaceKey(String url, String? key) {
   return url.replaceAll(
-      RegExp(RegExp.escape(_keyToken)), Uri.encodeQueryComponent(key ?? ''));
+    RegExp(RegExp.escape(_keyToken)),
+    Uri.encodeQueryComponent(key ?? ''),
+  );
 }
 
 const _keyToken = '{key}';
