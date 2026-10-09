@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
@@ -8,6 +9,8 @@ import '../../vector_map_tiles.dart';
 import '../flutter_map/flutter_map_state.dart';
 import '../flutter_map/flutter_map_zoom_scaler.dart';
 import '../layout/tile_layout.dart';
+import '../layout/tile_position.dart';
+import '../layout/tile_viewport.dart';
 import '../layout/tile_viewport_provider.dart';
 import '../model/map_tiles.dart';
 import '../tile_offset.dart';
@@ -70,7 +73,10 @@ class FlutterMapAdapter {
       final zoomScaler = FlutterMapZoomScaler(crs: camera.crs)
         ..updateMapZoomScale(_zoom);
       final tilePositions = layout.computeTilePositions(mapState, zoomScaler);
-      mapTiles.updateTiles(tilePositions);
+      mapTiles.updateTiles([
+        ...tilePositions,
+        ..._backdrop(viewport, mapState, zoomScaler),
+      ]);
       for (final model in mapTiles.obsoleteModels) {
         model.tilePosition = layout.positionTile(
           mapState,
@@ -82,6 +88,39 @@ class FlutterMapAdapter {
   }
 
   void _mapUpdated(MapEvent event) => mapUpdated();
+
+  /// How many zooms below the view the backdrop is.
+  static const backdropZoomDifference = 3;
+
+  /// The few tiles [backdropZoomDifference] zooms below [viewport] that cover
+  /// it: a backdrop drawn under the view's own tiles (lower zooms draw first),
+  /// and hidden by them wherever they are drawn. Where they are not drawn yet
+  /// (pinching out to tiles never loaded, panning fast) the map shows the
+  /// backdrop's coarser detail instead of nothing.
+  List<TilePosition> _backdrop(
+    TileViewport viewport,
+    FlutterMapState mapState,
+    FlutterMapZoomScaler zoomScaler,
+  ) {
+    final zoom = max(1, viewport.zoom - backdropZoomDifference);
+    if (zoom >= viewport.zoom) return const [];
+    final scale = (1 << (viewport.zoom - zoom)).toDouble();
+    final bounds = viewport.bounds;
+    final backdrop = TileViewport(
+      zoom: zoom,
+      bounds: Rect.fromLTRB(
+        (bounds.left / scale).floorToDouble(),
+        (bounds.top / scale).floorToDouble(),
+        (bounds.right / scale).floorToDouble(),
+        (bounds.bottom / scale).floorToDouble(),
+      ),
+    );
+    return TileLayout(
+      offset: tileOffset,
+      viewport: backdrop,
+      tileSize: tileSize,
+    ).computeTilePositions(mapState, zoomScaler);
+  }
 
   /// Whether [camera] describes a laid-out view tiles can be computed for: a
   /// finite, non-empty size and a finite zoom and centre.

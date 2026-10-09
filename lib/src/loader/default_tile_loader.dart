@@ -27,19 +27,20 @@ class DefaultTileLoader extends TileLoader {
   Future<void> load(TileDataModel model, bool Function() cancelled) async {
     RasterTileset? rasterTileset;
     try {
-      final tileset = await VectorTileLoader(
+      final (tileset, sourceBytes) = await VectorTileLoader(
         tileSize: tileSize,
         mapProperties: mapProperties,
         executor: executor,
         cache: cache,
         themeRepo: themeRepo,
-      ).load(model.tile, cancelled);
+      ).loadWithSources(model.tile, cancelled);
       rasterTileset = await RasterTileLoader(
         mapProperties: mapProperties,
         cache: cache,
       ).load(model.tile, cancelled);
 
       model.tileset = tileset;
+      model.sourceBytes = sourceBytes;
       model.rasterTileset = rasterTileset;
       model.isLoaded = true;
     } catch (e) {

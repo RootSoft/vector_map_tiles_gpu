@@ -66,17 +66,31 @@ class _TransformInput {
   });
 }
 
-Tile _apply(_TransformInput input) {
-  final theme = ThemeRepo.themeById[input.themeId]!;
-  final vectorTile = VectorTileReader().read(
-    input.bytes.materialize().asUint8List(),
-  );
+Tile _apply(_TransformInput input) => parseSourceTile(
+  themeId: input.themeId,
+  bytes: input.bytes.materialize().asUint8List(),
+  translation: input.translation,
+  tileSize: input.tileSize,
+);
+
+/// A source tile's bytes read, styled for [themeId] and translated, as the
+/// load does it. Also run by the pre-render job, which is sent these bytes
+/// rather than the parsed tile: copying a parsed tile (thousands of small
+/// objects) to a worker isolate is done by the sender, the UI isolate.
+Tile parseSourceTile({
+  required String themeId,
+  required Uint8List bytes,
+  required TileTranslation translation,
+  required double tileSize,
+}) {
+  final theme = ThemeRepo.themeById[themeId]!;
+  final vectorTile = VectorTileReader().read(bytes);
   final tileData = TileFactory(
     theme,
     const Logger.noop(),
   ).createTileData(vectorTile);
   final translated = TranslationApplier(
-    tileSize: input.tileSize,
-  ).apply(tileData, input.translation);
+    tileSize: tileSize,
+  ).apply(tileData, translation);
   return translated.toTile();
 }

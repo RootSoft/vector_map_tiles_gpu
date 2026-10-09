@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -9,8 +10,10 @@ import 'package:vector_tile_renderer/vector_tile_renderer.dart';
 import '../../vector_map_tiles.dart';
 import '../loader/caching_tile_loader.dart';
 import '../loader/theme_repo.dart';
+import '../loader/vector_tile_transform.dart';
 import '../model/map_properties.dart';
 import '../model/tile_data_model.dart';
+import '../tile_translation.dart';
 import 'abstract_map_layer_state.dart';
 
 class MapLayer extends AbstractMapLayer {
@@ -27,6 +30,7 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
   var _ready = false;
   ui.Image? _spriteAtlas;
   List<String> _previousTileKeys = [];
+  var _buildScheduled = false;
 
   @override
   void initState() {
@@ -84,22 +88,41 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
     return super.preRender(tile).then((_) async {
       final tileset = tile.tileset ?? Tileset({});
       final tileID = tile.tile.key();
-      final jobArguments = (
-        widget.mapProperties.theme.id,
-        zoom,
-        tileset,
-        tileID,
-        widget.mapProperties.tileOffset.zoomOffset,
-      );
 
       // Text atlases are built here, on the UI isolate, before the job that
       // lays the text out against them.
       await tilesRenderer.preRenderUi(zoom, tileset, tileID);
+
+      // The job is copied to the worker by this isolate. A parsed tileset is
+      // thousands of small objects, so it is sent the bytes its source tiles
+      // were read from instead, and reads them again there.
+      final sourceBytes = tile.sourceBytes;
+      final jobArguments = (
+        widget.mapProperties.theme.id,
+        zoom,
+        sourceBytes == null ? tileset : null,
+        widget.mapProperties.tileOffset.zoomOffset,
+        sourceBytes == null
+            ? null
+            : {
+                for (final MapEntry(:key, :value) in sourceBytes.entries)
+                  key: (
+                    TransferableTypedData.fromList([value.bytes]),
+                    value.translation,
+                    value.tileSize,
+                  ),
+              },
+      );
       await executor
           .submit(
             Job(
               "pre-render",
-              _preRender(),
+              _preRenderJob(
+                tilesRenderer.getTilePreRenderer(tileID),
+                ThemeLayerType.values
+                    .where(tilesRenderer.isPreRenderLayer)
+                    .toSet(),
+              ),
               jobArguments,
               // A tile removed meanwhile (panned away) is not worth the work.
               cancelled: () => !tile.isLoaded,
@@ -110,44 +133,51 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
           .then((renderData) {
             try {
               tile.renderData ??= renderData;
+              // Everything the GPU draws is in the render data now. The parsed
+              // tileset (often over 10 MB a tile) held on would keep the Dart
+              // heap at hundreds of MB with tiles parked (see MapTiles), and
+              // its collections stalled frames.
+              tile.sourceBytes = null;
+              tile.tileset = null;
             } catch (_) {}
           });
     });
   }
 
-  List<Map<String, Uint8List>> Function(
-    (String, double, Tileset, String, int) args,
-  )
-  _preRender() => _preRenderJob(
-    tilesRenderer.getPreRenderer(),
-    ThemeLayerType.values.where(tilesRenderer.isPreRenderLayer).toSet(),
-  );
-
   /// The pre-render job: the text layers through the renderer's pre-renderer,
   /// then each source tile's early pass (polygons, lines and the rest), the
   /// two halves `TileUiModel.renderData` takes since vector_tile_renderer
-  /// 7.0.0-beta.2.
+  /// 7.0.0-beta.2, batched into one pass of merged fills and lines. The
+  /// tileset comes either as is or as its source tiles' bytes, read here.
   ///
   /// Static on purpose: the job is sent to a worker isolate, and a closure made
   /// in an instance method shares its captured context with every other
   /// closure there. One that reads a field captures `this`, the whole widget
   /// state and render tree, which cannot be sent ("object is unsendable").
-  static List<Map<String, Uint8List>> Function(
-    (String, double, Tileset, String, int) args,
-  )
+  static List<Map<String, Uint8List>> Function(_PreRenderArguments args)
   _preRenderJob(
-    Map<String, Uint8List> Function(Theme, double, Tileset, String, int)
-    preRenderer,
+    Map<String, Uint8List> Function(Theme, double, Tileset, int) preRenderer,
     Set<ThemeLayerType> preRenderTypes,
   ) {
-    return ((String, double, Tileset, String, int) args) {
-      final (themeId, zoom, tileset, tileID, zoomOffset) = args;
+    return (_PreRenderArguments args) {
+      final (themeId, zoom, sentTileset, zoomOffset, sources) = args;
       final theme = ThemeRepo.themeById[themeId]!;
+      final tileset =
+          sentTileset ??
+          Tileset({
+            for (final MapEntry(key: source, value: (bytes, translation, size))
+                in sources!.entries)
+              source: parseSourceTile(
+                themeId: themeId,
+                bytes: bytes.materialize().asUint8List(),
+                translation: translation,
+                tileSize: size,
+              ),
+          });
       final text = preRenderer.call(
         theme.copyWith(types: preRenderTypes),
         zoom,
         tileset,
-        tileID,
         zoomOffset,
       );
       final early = [
@@ -157,7 +187,9 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
               .materialize()
               .prerenderData,
       ];
-      return [text, ...early];
+      // Merged into as few draws as the paint order allows, here rather than
+      // on the UI isolate.
+      return TilesRenderer.batchRenderData(theme, [text, ...early]);
     };
   }
 
@@ -190,6 +222,18 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
       uiTiles,
       mapTiles.tileModels.map((it) => it.tile.key()),
     );
+    for (final model in tileModels) {
+      model.isDrawn = tilesRenderer.isBuilt(model.tile.key());
+    }
+    // Tiles left for a later frame: build again then. The update after the
+    // last of them lets the tiles they replace go.
+    if (tilesRenderer.hasPendingTiles && !_buildScheduled) {
+      _buildScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _buildScheduled = false;
+        if (mounted) setState(() {});
+      });
+    }
 
     return CustomPaint(
       key: Key(
@@ -224,6 +268,16 @@ class MapLayerState extends AbstractMapLayerState<MapLayer> {
     }
   }
 }
+
+/// Theme id, zoom, the tileset (or null when sent as source bytes), zoom
+/// offset, and the source tiles' bytes, translations and tile size.
+typedef _PreRenderArguments = (
+  String,
+  double,
+  Tileset?,
+  int,
+  Map<String, (TransferableTypedData, TileTranslation, double)>?,
+);
 
 class MapTilesPainter extends CustomPainter {
   final MapProperties properties;

@@ -33,7 +33,15 @@ class VectorTileLoader {
     );
   }
 
-  Future<Tileset> load(TileIdentity tile, bool Function() cancelled) async {
+  Future<Tileset> load(TileIdentity tile, bool Function() cancelled) async =>
+      (await loadWithSources(tile, cancelled)).$1;
+
+  /// The tileset, and the bytes each of its source tiles was read from (see
+  /// [SourceTileBytes]).
+  Future<(Tileset, Map<String, SourceTileBytes>)> loadWithSources(
+    TileIdentity tile,
+    bool Function() cancelled,
+  ) async {
     final sourceTiles = mapProperties.theme.tileSources
         .map(
           (source) => MapEntry(source, mapProperties.tileProviders.get(source)),
@@ -41,14 +49,19 @@ class VectorTileLoader {
         .where((e) => e.value.type == TileProviderType.vector)
         .map((e) => _load(e.key, e.value, tile, cancelled));
     final tilesBySource = <String, Tile>{};
+    final bytesBySource = <String, SourceTileBytes>{};
     for (final sourceTileFuture in sourceTiles) {
       final sourceTile = await sourceTileFuture;
       final tile = sourceTile.tile;
       if (tile != null) {
         tilesBySource[sourceTile.source] = tile;
       }
+      final bytes = sourceTile.bytes;
+      if (bytes != null) {
+        bytesBySource[sourceTile.source] = bytes;
+      }
     }
-    return Tileset(tilesBySource);
+    return (Tileset(tilesBySource), bytesBySource);
   }
 
   TileData _emptyTile() => TileFactory(
@@ -86,13 +99,36 @@ class VectorTileLoader {
       throw CancellationException();
     }
     final transformed = await transform.apply(bytes, translation, cancelled);
-    return _SourceTile(source: source, tile: transformed);
+    return _SourceTile(
+      source: source,
+      tile: transformed,
+      bytes: SourceTileBytes(
+        bytes: bytes,
+        translation: translation,
+        tileSize: tileSize,
+      ),
+    );
   }
+}
+
+/// What a source tile was read from: enough to read it again on another
+/// isolate (see [parseSourceTile]).
+class SourceTileBytes {
+  final Uint8List bytes;
+  final TileTranslation translation;
+  final double tileSize;
+
+  SourceTileBytes({
+    required this.bytes,
+    required this.translation,
+    required this.tileSize,
+  });
 }
 
 class _SourceTile {
   final String source;
   final Tile? tile;
+  final SourceTileBytes? bytes;
 
-  _SourceTile({required this.source, required this.tile});
+  _SourceTile({required this.source, required this.tile, this.bytes});
 }

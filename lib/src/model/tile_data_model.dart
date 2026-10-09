@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:vector_tile_renderer/vector_tile_renderer.dart';
 
 import '../layout/tile_position.dart';
+import '../loader/vector_tile_loader.dart';
 import '../tile_identity.dart';
 
 class TileDataModel {
@@ -10,9 +11,18 @@ class TileDataModel {
   TilePosition tilePosition;
   bool isLoaded = false;
   bool isDisplayReady = false;
+
+  /// Whether the renderer has built the tile and draws it. A tile can be ready
+  /// a few frames before it is drawn: the renderer builds new tiles within a
+  /// budget per frame.
+  bool isDrawn = false;
   bool preRenderStarted = false;
   int preRenderFailures = 0;
   Tileset? tileset;
+
+  /// The bytes the [tileset]'s source tiles were read from, for the pre-render
+  /// job to read again; dropped once it has run.
+  Map<String, SourceTileBytes>? sourceBytes;
   RasterTileset? rasterTileset;
 
   /// The tile's pre-rendered GPU data, one map of layer id to packed render
@@ -24,10 +34,12 @@ class TileDataModel {
   void dispose() {
     isLoaded = false;
     isDisplayReady = false;
+    isDrawn = false;
     preRenderStarted = false;
     rasterTileset?.dispose();
     rasterTileset = null;
     tileset = null;
+    sourceBytes = null;
     renderData = null;
   }
 }

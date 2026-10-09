@@ -7,7 +7,6 @@ import 'package:stash/src/api/cache/stats/default_stats.dart';
 import 'package:stash/stash_api.dart';
 import 'package:vector_map_tiles/src/cache/byte_storage.dart';
 import 'package:vector_map_tiles/src/cache/byte_storage_io.dart';
-import 'package:vector_map_tiles/src/extensions.dart';
 
 import 'abstract_stash_cache.dart';
 import 'cache.dart';
@@ -122,9 +121,7 @@ class _ByteStorageBinaryCache extends BinaryCache {
     Uint8List value, {
     CacheEntryDelegate<Uint8List>? delegate,
   }) async {
-    if (++_putCount % 20 == 0) {
-      await _applyMaxSize();
-    }
+    if (++_putCount % 20 == 0) _scheduleMaxSize();
     await storage.write(key, value);
   }
 
@@ -168,29 +165,27 @@ class _ByteStorageBinaryCache extends BinaryCache {
     }
   }
 
-  Future<void> _applyMaxSize() async {
-    final entries = await storage.list();
-    int size = entries.isEmpty
-        ? 0
-        : entries.map((e) => e.size).reduce((a, b) => a + b);
-    if (size > maxSizeInBytes) {
-      final entriesByAccessed = entries.sorted(
-        (a, b) => a.accessed.compareTo(b.accessed),
-      );
-      for (final entry in entriesByAccessed) {
-        try {
-          await storage.delete(entry.path);
-          stats.increaseEvictions();
-          size -= entry.size;
-          if (size <= maxSizeInBytes) {
-            break;
-          }
-        } catch (e) {
-          // ignore, race condition file was deleted
-        }
-      }
+  Future<void> _applyMaxSize() => storage.enforceMaxSize(maxSizeInBytes);
+
+  /// Keeps the cache within [maxSizeInBytes] without holding up the put that
+  /// triggered it: at most every [_maxSizeInterval], never twice at once.
+  void _scheduleMaxSize() {
+    final now = DateTime.now();
+    final last = _lastMaxSize;
+    if (_applyingMaxSize ||
+        (last != null && now.difference(last) < _maxSizeInterval)) {
+      return;
     }
+    _applyingMaxSize = true;
+    _lastMaxSize = now;
+    _applyMaxSize().catchError((_) {}).whenComplete(() {
+      _applyingMaxSize = false;
+    });
   }
+
+  static const _maxSizeInterval = Duration(seconds: 30);
+  bool _applyingMaxSize = false;
+  DateTime? _lastMaxSize;
 
   Future<void> _expireIfExceedsTtl(ByteStorageEntry entity) async {
     final exceeds = _exceedsTtl(entity);

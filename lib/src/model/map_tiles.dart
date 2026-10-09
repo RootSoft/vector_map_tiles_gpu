@@ -13,6 +13,7 @@ class MapTiles extends SafeChangeNotifier {
   final _tiles = <TileIdentity, TileDataModel>{};
   final _jobs = <TileIdentity, _TileJob>{};
   final _retries = <TileIdentity, Timer>{};
+
   List<TileIdentity> _latestTileIds = [];
 
   List<TileDataModel> get tileModels =>
@@ -62,16 +63,24 @@ class MapTiles extends SafeChangeNotifier {
 
   List<TileDataModel> _computeTilesToRemove() {
     final neededTileIds = _latestTileIds.toSet();
-    final loadingTileModels = _tiles.values
-        .where((it) => !it.isDisplayReady)
-        .toList();
     final obsoleteModels = _tiles.values
         .where((model) => !neededTileIds.contains(model.tile))
         .toList();
-    if (loadingTileModels.isEmpty || neededTileIds.isEmpty) {
+    if (neededTileIds.isEmpty) {
       return obsoleteModels;
     }
     final zoom = neededTileIds.first.z;
+    // Tiles of other zooms stay only to cover the view's own zoom while its
+    // tiles are not drawn yet (ready is not enough: the renderer builds a few
+    // a frame). Tiles of other zooms still loading, the backdrop's or the
+    // retained ones, do not hold them: that kept tiles of the zoom just left
+    // drawn over the view.
+    final loadingTileModels = _tiles.values
+        .where((it) => it.tile.z == zoom && (!it.isDisplayReady || !it.isDrawn))
+        .toList();
+    if (loadingTileModels.isEmpty) {
+      return obsoleteModels;
+    }
     const maxZoomDifference = 5;
     final toRetain = obsoleteModels
         .where(

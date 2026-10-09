@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'byte_storage.dart';
@@ -88,6 +89,42 @@ class IoByteStorage extends ByteStorage {
           .toList();
     }
     return [];
+  }
+
+  /// Runs on a background isolate with synchronous file calls. On the UI
+  /// isolate this listed the cache and read every file's size one awaited
+  /// call at a time: thousands of file operations whenever the check ran,
+  /// which held up frames and, on a full cache, the UI for long enough to
+  /// trigger an ANR on Android.
+  @override
+  Future<void> enforceMaxSize(int maxSizeInBytes) async {
+    final root = await _storagePath;
+    await Isolate.run(() => _enforceMaxSizeSync(root, maxSizeInBytes));
+  }
+
+  static void _enforceMaxSizeSync(String root, int maxSizeInBytes) {
+    final directory = Directory(root);
+    if (!directory.existsSync()) return;
+    final files = <(File, FileStat)>[];
+    var size = 0;
+    for (final entity in directory.listSync(followLinks: false)) {
+      if (entity is! File) continue;
+      final stat = entity.statSync();
+      if (stat.type != FileSystemEntityType.file) continue;
+      files.add((entity, stat));
+      size += stat.size;
+    }
+    if (size <= maxSizeInBytes) return;
+    files.sort((a, b) => a.$2.accessed.compareTo(b.$2.accessed));
+    for (final (file, stat) in files) {
+      try {
+        file.deleteSync();
+        size -= stat.size;
+        if (size <= maxSizeInBytes) return;
+      } catch (_) {
+        // Deleted meanwhile.
+      }
+    }
   }
 
   Future<MapEntry<FileSystemEntity, FileStat>> _toEntry(

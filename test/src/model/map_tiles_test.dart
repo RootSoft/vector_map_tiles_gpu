@@ -374,6 +374,42 @@ void main() {
         },
       );
 
+      test(
+        'keeps retained tiles until the overlapping tiles are drawn',
+        () async {
+          final parentTile = TilePosition(
+            tile: TileIdentity(1, 0, 0),
+            position: const Rect.fromLTWH(0, 0, 256, 256),
+          );
+          final childTile = TilePosition(
+            tile: TileIdentity(2, 0, 0),
+            position: const Rect.fromLTWH(0, 0, 128, 128),
+          );
+
+          mockLoader.markTileAsReady('z=1,x=0,y=0');
+          testMapTiles.updateTiles([parentTile]);
+          mockLoader.completeTile('z=1,x=0,y=0');
+
+          await Future.delayed(Duration.zero);
+
+          mockLoader.drawsReadyTiles = false;
+          testMapTiles.updateTiles([childTile]);
+          mockLoader.completeTile('z=2,x=0,y=0');
+          await Future.delayed(Duration.zero);
+
+          // Ready but not yet built by the renderer: the parent still covers it.
+          expect(testMapTiles.tileModels, hasLength(2));
+
+          testMapTiles.tileModels
+                  .firstWhere((it) => it.tile == TileIdentity(2, 0, 0))
+                  .isDrawn =
+              true;
+          testMapTiles.updateTiles([childTile]);
+
+          expect(testMapTiles.tileModels.single.tile, TileIdentity(2, 0, 0));
+        },
+      );
+
       test('does not retain tiles that are not display ready', () {
         final tile1 = TilePosition(
           tile: TileIdentity(1, 0, 0),

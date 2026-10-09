@@ -7,6 +7,11 @@ class MockTileLoader implements TileLoader {
   final Map<String, Completer<void>> _completers = {};
   final Map<String, bool> _shouldComplete = {};
 
+  /// Whether ready tiles count as drawn too, as the layer and renderer mark
+  /// them; false holds them at ready but not yet built.
+  bool _drawn = true;
+  set drawsReadyTiles(bool value) => _drawn = value;
+
   @override
   Future<void> load(TileDataModel model, bool Function() cancelled) async {
     final key = model.tile.key();
@@ -15,12 +20,14 @@ class MockTileLoader implements TileLoader {
 
     if (_shouldComplete[key] == true) {
       model.isDisplayReady = true;
+      model.isDrawn = _drawn;
       completer.complete();
     }
 
     await completer.future;
     if (!cancelled()) {
       model.isDisplayReady = true;
+      model.isDrawn = _drawn;
     }
   }
 
