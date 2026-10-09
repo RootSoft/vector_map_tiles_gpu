@@ -4,6 +4,7 @@ import 'dart:ui';
 import '../../vector_map_tiles.dart';
 import 'map_state.dart';
 import 'tile_viewport.dart';
+import 'zoom_scaler.dart';
 
 class TileViewportProvider {
   final MapState mapState;
@@ -38,7 +39,13 @@ class TileViewportProvider {
 
   double tileZoom() => max(1.0, (mapState.zoom + tileOffset.zoomOffset));
 
-  double _clampedTileZoom() => tileZoom().floorToDouble();
+  /// The tile zoom, at most the deepest zoom [ZoomScaler] has a scale for (it
+  /// threw a RangeError on a map zoomed in past it). Deeper map zooms draw
+  /// these tiles scaled up.
+  double _clampedTileZoom() =>
+      min(tileZoom().floorToDouble(), maxTileZoom.toDouble());
+
+  static const maxTileZoom = ZoomScaler.defaultMaxZoom - 1;
 
   Rect _tiledPixelBounds() {
     final zoom = mapState.zoom;

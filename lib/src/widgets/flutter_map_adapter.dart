@@ -41,21 +41,33 @@ class FlutterMapAdapter {
     final controller = MapController.maybeOf(context);
     if (controller != null) {
       _subscription ??= controller.mapEventStream.listen(_mapUpdated);
-      final mapState = FlutterMapState(camera: controller.camera);
+      // The camera flutter_map lays its layers out with. The controller's lags
+      // it: until the map's first layout it still has flutter_map's impossible
+      // (infinite) size, which made the tile bounds infinite and threw.
+      final camera = MapCamera.maybeOf(context) ?? controller.camera;
+      if (!_isUsable(camera)) return;
+      final mapState = FlutterMapState(camera: camera);
       final viewportProvider = TileViewportProvider(
         mapState: mapState,
         tileOffset: tileOffset,
         tileSize: tileSize,
       );
       final viewport = viewportProvider.currentViewport();
+      final bounds = viewport.bounds;
+      if (!bounds.left.isFinite ||
+          !bounds.top.isFinite ||
+          !bounds.right.isFinite ||
+          !bounds.bottom.isFinite) {
+        return;
+      }
       var layout = TileLayout(
         offset: tileOffset,
         viewport: viewport,
         tileSize: tileSize,
       );
-      _zoom = controller.camera.zoom;
-      _rotation = controller.camera.rotation;
-      final zoomScaler = FlutterMapZoomScaler(crs: controller.camera.crs)
+      _zoom = camera.zoom;
+      _rotation = camera.rotation;
+      final zoomScaler = FlutterMapZoomScaler(crs: camera.crs)
         ..updateMapZoomScale(_zoom);
       final tilePositions = layout.computeTilePositions(mapState, zoomScaler);
       mapTiles.updateTiles(tilePositions);
@@ -70,4 +82,17 @@ class FlutterMapAdapter {
   }
 
   void _mapUpdated(MapEvent event) => mapUpdated();
+
+  /// Whether [camera] describes a laid-out view tiles can be computed for: a
+  /// finite, non-empty size and a finite zoom and centre.
+  static bool _isUsable(MapCamera camera) {
+    final size = camera.nonRotatedSize;
+    return size.width.isFinite &&
+        size.height.isFinite &&
+        size.width > 0 &&
+        size.height > 0 &&
+        camera.zoom.isFinite &&
+        camera.center.latitude.isFinite &&
+        camera.center.longitude.isFinite;
+  }
 }

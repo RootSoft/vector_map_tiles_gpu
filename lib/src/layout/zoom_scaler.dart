@@ -5,7 +5,10 @@ class ZoomScaler {
   final _crsScaleByZoom = <double>[];
   var _mapZoomCrsScale = 1.0;
 
-  ZoomScaler(this.zoomScale, {int maxZoom = 26}) {
+  /// How many zooms (0 up to one below this) scales are kept for.
+  static const defaultMaxZoom = 26;
+
+  ZoomScaler(this.zoomScale, {int maxZoom = defaultMaxZoom}) {
     _crsScaleByZoom.add(1.0);
     for (int zoom = 1; zoom < maxZoom; ++zoom) {
       _crsScaleByZoom.add(zoomScale(zoom.toDouble()));
